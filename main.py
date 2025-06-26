@@ -1,49 +1,47 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 import requests
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# Define the expected structure of the incoming POST body
+# Define the expected JSON body with exact keys as per DMVIC API spec
 class LoginPayload(BaseModel):
-    username: str      # DMVIC username (email)
-    password: str      # DMVIC password
+    Username: str   # DMVIC account username (must match case)
+    Password: str   # DMVIC account password (must match case)
 
-# FastAPI route to get DMVIC token
+# Endpoint to handle token requests
 @app.post("/get-token")
-def get_token(payload: LoginPayload):
-    # ✅ Correct DMVIC UAT API URL (from your API docs section 4.1)
+def get_token(payload: LoginPayload, ClientID: str = Header(...)):
+    # DMVIC API login URL (from latest docs)
     login_url = "https://uat-api.dmvic.com/api/V1/Account/Login"
 
-    # ✅ These PEM files should be uploaded alongside main.py in your Render project
-    cert_path = "client_cert.pem"  # Certificate PEM file
-    key_path = "client_key.pem"    # Private Key PEM file
+    # PEM certificate files required for mutual TLS (already extracted from .pfx)
+    cert_path = "client_cert.pem"  # The public certificate
+    key_path = "client_key.pem"    # The private key
 
     try:
-        # Create a session for HTTPS requests with mTLS
-        session = requests.Session()
-        session.verify = True  # Enforce SSL verification
-
-        # POST to DMVIC login API using JSON body and required headers
-        response = session.post(
+        # Make the secure POST request using mTLS
+        response = requests.post(
             login_url,
             json={
-                "Username": payload.username,     # ✅ Must match DMVIC expected JSON key
-                "Password": payload.password
+                "Username": payload.Username,  # Match DMVIC casing exactly
+                "Password": payload.Password
             },
             headers={
-                "ClientID": payload.client_id     # ✅ Must be in the headers
+                "ClientID": ClientID,                  # Sent as a custom header
+                "Content-Type": "application/json"     # Tell DMVIC you're sending JSON
             },
-            cert=(cert_path, key_path)            # ✅ Use mTLS (certificate + key)
+            cert=(cert_path, key_path),  # Attach the certificate and key for mTLS
+            verify=True                  # Enforce valid SSL/TLS certificate
         )
 
-        # If login successful (status code 200), return full JSON response (includes token)
+        # If successful, return the response from DMVIC
         if response.status_code == 200:
             return response.json()
         else:
-            # DMVIC API responded with an error, forward that to the client
+            # DMVIC returned an error (e.g. invalid credentials)
             raise HTTPException(status_code=response.status_code, detail=response.text)
 
     except Exception as e:
-        # Handle internal errors (e.g., file not found, SSL issues, etc.)
+        # Catch any unexpected errors (e.g. file not found, request error)
         raise HTTPException(status_code=500, detail=str(e))
