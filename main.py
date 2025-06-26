@@ -15,7 +15,7 @@ class LoginPayload(BaseModel):
 @app.post("/get-token")
 def get_token(payload: LoginPayload):
     # ✅ DMVIC UAT token endpoint
-    login_url = "https://uat.dmvic.com/api/auth/login"
+    login_url = "https://uat-api.dmvic.com/api/V1/Account/Login"
 
     # ✅ Path to your .pfx certificate file (must be uploaded in the same folder)
     pfx_path = "BowmanUAT.pfx"
