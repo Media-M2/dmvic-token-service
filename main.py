@@ -1,32 +1,36 @@
 from fastapi import FastAPI, HTTPException
 import requests
 from pydantic import BaseModel
+import os
 
 app = FastAPI()
 
-# Define the structure of the expected POST request body
+# ✅ Define the expected input structure
 class LoginPayload(BaseModel):
-    username: str      # Your DMVIC username (email)
-    password: str      # Your DMVIC password
-    client_id: str     # Your assigned Client ID
+    username: str      # DMVIC username (email)
+    password: str      # DMVIC password
+    client_id: str     # DMVIC assigned ClientID
 
 @app.post("/get-token")
 def get_token(payload: LoginPayload):
-    # URL for DMVIC login
+    # ✅ DMVIC UAT login endpoint
     login_url = "https://uat.dmvic.com/api/auth/login"
-    
-    # Path to the .pfx file — must be in the same directory as this script
+
+    # ✅ .pfx file must be uploaded alongside this script
     pfx_path = "BowmanUAT.pfx"
 
+    # ✅ PFX certificate password — paste yours here between the quotes
+    cert_password = "cAwjRHWewmzFoOY"  # 👈 make sure this matches your pwd.txt file exactly
+
     try:
-        # 🔐 PASTE YOUR .pfx PASSWORD BELOW (inside the quotes)
-        cert_password = "cAwjRHWewmzFoOY"
+        # ✅ Check if the PFX file exists
+        if not os.path.exists(pfx_path):
+            raise HTTPException(status_code=500, detail="Certificate file not found: " + pfx_path)
 
-        # Create a new requests session
+        # ✅ Create session and send POST to DMVIC with mTLS
         session = requests.Session()
-        session.verify = True  # Enforce SSL certificate verification
+        session.verify = True
 
-        # Make the POST request to DMVIC with mutual TLS
         response = session.post(
             login_url,
             json={
@@ -34,18 +38,19 @@ def get_token(payload: LoginPayload):
                 "password": payload.password
             },
             headers={
-                "ClientID": payload.client_id
+                "ClientID": payload.client_id,
+                "Content-Type": "application/json"
             },
-            cert=(pfx_path, cert_password)  # Use the .pfx file and the password you pasted
+            cert=(pfx_path, cert_password)
         )
 
-        # If login is successful, return the token
+        # ✅ Return DMVIC response if OK
         if response.status_code == 200:
             return response.json()
-        else:
-            # If DMVIC responds with an error, return it
-            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        # ❌ DMVIC responded with an error
+        raise HTTPException(status_code=response.status_code, detail=response.text)
 
     except Exception as e:
-        # Catch and return any unexpected errors
+        # ❌ Catch all other internal or certificate errors
         raise HTTPException(status_code=500, detail=str(e))
