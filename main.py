@@ -8,7 +8,6 @@ app = FastAPI()
 class LoginPayload(BaseModel):
     username: str      # DMVIC username (email)
     password: str      # DMVIC password
-    client_id: str     # Your assigned DMVIC ClientID
 
 # FastAPI route to get DMVIC token
 @app.post("/get-token")
