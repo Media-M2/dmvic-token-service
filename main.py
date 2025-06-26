@@ -1,58 +1,50 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import requests
-import traceback
-import os
+from pydantic import BaseModel
 
 app = FastAPI()
 
-# ✅ Define the structure of the expected request payload
+# Define the expected structure of the incoming POST body
 class LoginPayload(BaseModel):
     username: str      # DMVIC username (email)
     password: str      # DMVIC password
     client_id: str     # Your assigned DMVIC ClientID
 
+# FastAPI route to get DMVIC token
 @app.post("/get-token")
 def get_token(payload: LoginPayload):
-    # ✅ DMVIC UAT token endpoint
+    # ✅ Correct DMVIC UAT API URL (from your API docs section 4.1)
     login_url = "https://uat-api.dmvic.com/api/V1/Account/Login"
 
-    # ✅ Path to your .pfx certificate file (must be uploaded in the same folder)
-    pfx_path = "BowmanUAT.pfx"
-
-    # ✅ Paste the password from your pwd.txt file exactly between the quotes
-    cert_password = "cAwjRHWewmzFoOY"  # 👈 Make sure this is correct
+    # ✅ These PEM files should be uploaded alongside main.py in your Render project
+    cert_path = "client_cert.pem"  # Certificate PEM file
+    key_path = "client_key.pem"    # Private Key PEM file
 
     try:
-        # ✅ Confirm the .pfx file exists
-        if not os.path.exists(pfx_path):
-            raise HTTPException(status_code=500, detail=f"Certificate file not found: {pfx_path}")
-
-        # ✅ Create a secure session and call DMVIC
+        # Create a session for HTTPS requests with mTLS
         session = requests.Session()
-        session.verify = True  # Enables SSL verification
+        session.verify = True  # Enforce SSL verification
 
+        # POST to DMVIC login API using JSON body and required headers
         response = session.post(
             login_url,
             json={
-                "username": payload.username,
-                "password": payload.password
+                "Username": payload.username,     # ✅ Must match DMVIC expected JSON key
+                "Password": payload.password
             },
             headers={
-                "ClientID": payload.client_id,
-                "Content-Type": "application/json"
+                "ClientID": payload.client_id     # ✅ Must be in the headers
             },
-            cert=(pfx_path, cert_password)  # This activates mutual TLS
+            cert=(cert_path, key_path)            # ✅ Use mTLS (certificate + key)
         )
 
-        # ✅ Return token if successful
+        # If login successful (status code 200), return full JSON response (includes token)
         if response.status_code == 200:
             return response.json()
-
-        # ❌ DMVIC returned an error (401, 403, 400, etc.)
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        else:
+            # DMVIC API responded with an error, forward that to the client
+            raise HTTPException(status_code=response.status_code, detail=response.text)
 
     except Exception as e:
-        # 🛠 Print full error trace to Render logs for debugging
-        traceback.print_exc()
+        # Handle internal errors (e.g., file not found, SSL issues, etc.)
         raise HTTPException(status_code=500, detail=str(e))
